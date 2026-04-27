@@ -22,7 +22,7 @@ static void setField(unsigned int uiSrc, unsigned int uiSrcStartBit,
    unsigned int i;
    unsigned int curSrc;
    for (i = 0; i < uiNumBits; i++) {
-      /*extracts the i + start bit by shifting it by i + start right and &-ing with 1*/
+      /* extract bit (i + uiSrcStartBit) of uiSrc */
       curSrc = (uiSrc >> (i + uiSrcStartBit)) & 1U;
       *puiDest |= (curSrc << (i + uiDestStartBit));
    }

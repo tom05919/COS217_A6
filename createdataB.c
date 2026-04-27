@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------*/
 /* createdataB.c                                                      */
-/* Author: Tom                                                        */
+/* Author: Tom Wang and Ty Lipscomb                                   */
 /*--------------------------------------------------------------------*/
 
 /* Produces a file called dataB with the student name, a nullbyte,

