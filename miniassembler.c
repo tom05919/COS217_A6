@@ -98,3 +98,27 @@ unsigned int MiniAssembler_b(unsigned long ulAddr,
 
    return uiInstr;
 }
+
+/*--------------------------------------------------------------------*/
+
+unsigned int MiniAssembler_bl(unsigned long ulAddr,
+   unsigned long ulAddrOfThisInstr)
+{
+   unsigned int uiInstr;
+   long lRelOffset;
+
+   /* Base "bl .": bits 26-31 = 100101, bits 0-25 = imm26. The only
+      difference from "b" is bit 31 (the "link" bit), which causes
+      x30 to be set to the address of the next instruction before
+      branching. */
+   uiInstr = 0x94000000;
+
+   /* The 26-bit signed offset is the PC-relative displacement
+      divided by 4. Only the low 26 bits are written. */
+   lRelOffset = ((long)ulAddr - (long)ulAddrOfThisInstr) / 4;
+   setField((unsigned int)(unsigned long)lRelOffset, 0,
+            &uiInstr, 0, 26);
+
+   return uiInstr;
+}
+
